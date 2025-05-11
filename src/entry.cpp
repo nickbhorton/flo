@@ -1,8 +1,15 @@
+#include <array>
+#include <iostream>
+#include <stdexcept>
+
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include <GLFW/glfw3.h>
-#include <array>
+
+// globals
+int window_width = 640;
+int window_height = 480;
 
 void background_color_tool(std::array<float, 3>& bg_color)
 {
@@ -27,62 +34,100 @@ void background_color_tool(std::array<float, 3>& bg_color)
     ImGui::End();
 }
 
-int main(void)
+void glfw_error_callback(int error, const char* desc)
 {
-    if (!glfwInit()) {
-        return -1;
+    std::cerr << "glfw_error_callback " << error << " " << desc << std::endl;
+}
+
+void glfw_window_resize_callback([[maybe_unused]] GLFWwindow* window, int new_width, int new_height)
+{
+    std::cout << "window resized: " << new_width << " " << new_height << "\n";
+    window_width = new_width;
+    window_height = new_height;
+    glViewport(0, 0, new_width, new_height);
+}
+
+class Glfw
+{
+public:
+    Glfw()
+    {
+        if (!glfwInit()) {
+            throw std::runtime_error("failed to initialize glfw");
+        }
+        glfwSetErrorCallback(glfw_error_callback);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+        window = glfwCreateWindow(window_width, window_height, "flo", NULL, NULL);
+        if (!window) {
+            throw std::runtime_error("failed to initialize glfw window");
+        }
+        glfwMakeContextCurrent(window);
+        glfwSetFramebufferSizeCallback(window, glfw_window_resize_callback);
+
+        // turn on vsync
+        glfwSwapInterval(1);
     }
-    // GL 3.2 + GLSL 150
+    ~Glfw() { glfwTerminate(); };
+
+public:
+    GLFWwindow* window;
     const char* glsl_version = "#version 150";
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+};
 
-    GLFWwindow* window = glfwCreateWindow(640, 480, "GLFW CMake starter", NULL, NULL);
-    if (!window) {
-        glfwTerminate();
-        return -1;
+class ImguiContext
+{
+public:
+    ImguiContext(Glfw& glfw)
+    {
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGui::StyleColorsDark();
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = NULL;
+
+        ImGui_ImplGlfw_InitForOpenGL(glfw.window, true);
+        ImGui_ImplOpenGL3_Init(glfw.glsl_version);
     }
-
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-
-    // background color
-    std::array<float, 3> bg_color{0.4f, 0.3f, 0.4f};
-
-    // imgui setup
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::StyleColorsDark();
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.IniFilename = NULL;
-
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glsl_version);
-
-    while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
-
+    ~ImguiContext()
+    {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+    }
+    void new_frame()
+    {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-
-        // imgui tools
-        background_color_tool(bg_color);
-
+    }
+    void render()
+    {
         ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
+};
 
+int main(void)
+{
+    // background color
+    std::array<float, 3> bg_color{0.4f, 0.3f, 0.4f};
+
+    Glfw glfw{};
+    ImguiContext gui_context{glfw};
+
+    while (!glfwWindowShouldClose(glfw.window)) {
+        glfwPollEvents();
         glClearColor(bg_color[0], bg_color[1], bg_color[2], bg_color[3]);
         glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(window);
+
+        gui_context.new_frame();
+        background_color_tool(bg_color);
+        gui_context.render();
+
+        glfwSwapBuffers(glfw.window);
     }
-
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-
-    glfwTerminate();
     return 0;
 }
