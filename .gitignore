@@ -1,4 +1,5 @@
 .clang-format
+.clangd
 flo
 build
 compile_commands.json

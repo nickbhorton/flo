@@ -3,3 +3,4 @@
 
 #include "app.h"
 #include "entry.h"
+#include "log/log.h"
